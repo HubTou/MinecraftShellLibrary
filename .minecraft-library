@@ -1,0 +1,1172 @@
+#!/bin/sh
+# @(#) .minecraft-library.sh v1.00 (2016-09-18) / Hubert Tournier 
+
+# An API for Minecraft / Bukkit server management and scripting
+
+################################################################################
+# FUNCTION				# DESCRIPTION
+#
+#-[ Logging ]-------------------------------------------------------------------
+# FormatLogMessage()			# Prepare a log message in syslogd like format, with tab separator
+# LogError()				# Log an ERROR message
+# LogWarning()				# Log a warning message
+# LogInfo()				# Log an informational message
+#
+#-[ Minecraft commands ]--------------------------------------------------------
+# ExecuteCommand()			# Execute a Minecraft command from the console
+# ExecuteCommandsFile()			# Execute Minecraft commands contained in a file
+# AddToChat()				# Send a message to the Minecraft chat
+#
+#-[ Server management ]-------------------------------------------------------
+# StartServer()				# Start the Minecraft server
+# IsServerLoaded()			# Test if the Minecraft server is loaded
+# GetServerPID()			# Get the Minecraft server process ID
+# WaitForServerStop()			# Wait till WAIT_FOR_SERVER_STOP for Minecraft server stop
+# SyncServer()				# Ask the Minecraft server to save its running data to disk
+# StopServer()				# Stop the Minecraft server
+# RestartServer()			# Stop and restart the Minecraft server
+# WaitForServerStart()			# Wait for a log message indicating the Minecraft server is ready
+# IsServerActive()			# Test if the Minecraft server is active (not frozen)
+# FixIncorrectPlayersPositions()	# Fix erroneous position coordinates for players
+# RestartServerIfCrashed()		# Test if the Minecraft server is involuntarily stopped and then restart it
+# RestartServerIfFrozen()		# Test if the Minecraft server is frozen and then restart it
+# RestartServerIfTooManyEntitites()	# Test if the Minecraft server has too many entities and then restart it
+#
+#-[ Players management ]------------------------------------------------------
+# ListPlayers()				# List all known players with their name & UUID
+# GetOnlinePlayers()			# List the names of connected players
+# IsPlayerOnline()			# Test if the specified player is online
+# GetNameFromUUID()			# Get the name corresponding to an UUID
+# GetUUIDFromName()			# Get the UUID corresponding to a name
+# GetGroupFromUUID()			# Get a player's group from his UUID
+# GetNicknameFromName()			# Get a player's nickname from his name
+# GetNameFromNickname()			# Get the first player name from a nickname
+# IsPlayerBanned()			# Test if the specified player is banned (prints "true" or "false")
+# GetLastSeenTimestampFromName()	# Get a player's logout timestamp from his name
+# GetDateFromTimestamp()		# Get a YYYY-MM-DD HH:MM:SS date from a timestamp
+# GetLastSeenSecondsFromName()		# Get a player's delay in seconds since logout from his name
+# GetIrlLocationFromName()		# Get a Player's real life location from his Minecraft name
+# AddItemToOfflinePlayerInventory	# Insert an item in an offline player's inventory
+# AddItemToPlayerInventory		# Give an item to a player whether online or offline
+# AddFileToOfflinePlayerInventory()	# Insert custom item(s) from a file in an offline player's inventory
+#
+#-[ NBT files management ]----------------------------------------------------
+# ToggleNbtValue()			# Toggle a value in an NBT file
+#
+################################################################################
+
+export MINECRAFT_LIBRARY_IS_LOADED=true
+export USER_VERIFIED=no
+
+export PATH=${PATH}:/usr/local/bin
+export TMP=${TMP:-/tmp}
+
+export DEBUG_FILE=.debug
+export NO_RESTART_FILE=.dontrestart
+
+export ENTITIES_LIMIT=20000
+
+export WAIT_FOR_SERVER_STOP=30
+export WAIT_FOR_SERVER_START=30
+export WAIT_FOR_MARKER_LOGGING=5
+export WAIT_BEFORE_SERVER_RESTART=15
+
+if [ "${SERVER_STARTED_MESSAGE}" = "" ]
+then	export SERVER_STARTED_MESSAGE="! For help, type \"help\" or \"?\""
+fi
+
+. .server-settings
+
+cd ${SERVER_ROOT}
+
+################################################################################################################################################################
+
+FormatLogMessage( )
+################################################################################
+# DESCRIPTION:	Prepare a log message in syslogd like format, with tab separator
+# PARAMETER:	1: message type (ERROR, warning, info)
+#		2-N: message
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	echo -n `date "+%Y-%m-%d %H:%M:%S"`"	"
+	echo -n `uname -n | sed "s/\..*//"`"	"
+	echo -n "${SERVER_NAME}[$$]	"
+	echo -n "${1}	"
+	shift
+	echo "${*}"
+}
+
+LogError( )
+################################################################################
+# DESCRIPTION:	Log an ERROR message
+# PARAMETER:	message
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	FormatLogMessage ERROR $* >> ${DEBUG_FILE}
+}
+
+LogWarning( )
+################################################################################
+# DESCRIPTION:	Log a warning message
+# PARAMETER:	message
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	FormatLogMessage warning $* >> ${DEBUG_FILE}
+}
+
+LogInfo( )
+################################################################################
+# DESCRIPTION:	Log an informational message
+# PARAMETER:	message
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	FormatLogMessage info $* >> ${DEBUG_FILE}
+}
+
+################################################################################################################################################################
+
+ExecuteCommand( )
+################################################################################
+# DESCRIPTION:	Execute a Minecraft command from the console
+# PARAMETER:	Minecraft command (without preceding /)
+# RETURN CODE:	0=OK, 1=fatal error
+# DEPENDENCIES: GNU Screen utility
+################################################################################
+{
+	if [ "${USER_VERIFIED}" = "no" ]
+	then	if [ "${SERVER_USER}" = "`whoami`" ]
+		then	USER_VERIFIED=yes
+		else	FormatLogMessage ERROR "ExecuteCommand: You must run this utility from the ${SERVER_USER} account."
+			exit 1
+		fi
+	fi
+
+	screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "$*"`printf \\\r`
+
+	return 0
+}
+
+ExecuteCommandsFile( )
+################################################################################
+# DESCRIPTION:	Execute Minecraft commands contained in a file
+# PARAMETER:	command filename
+# RETURN CODE:	0=OK, 1+=errors
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "${#}" != 1 ]
+	then	LogError "ExecuteCommandsFile - missing arg"
+		return 1
+	elif [ ! -f "${1}" ]
+	then	LogError "ExecuteCommandsFile - non existent file"
+		return 2
+	fi
+
+	cat "${1}"  \
+	| while read LINE
+	do
+		ExecuteCommand "${LINE}"
+	done
+
+	return 0
+}
+
+AddToChat( )
+################################################################################
+# DESCRIPTION:	Send a message to the Minecraft chat
+# PARAMETER:	message
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	ExecuteCommand "say $*"
+}
+
+################################################################################################################################################################
+
+StartServer( )
+################################################################################
+# DESCRIPTION:	Start the Minecraft server
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: A start script (usually setuid/start.sh)
+################################################################################
+{
+	${SERVER_START_SCRIPT}
+}
+
+IsServerLoaded( )
+################################################################################
+# DESCRIPTION:	Test if the Minecraft server is loaded
+# PARAMETER:	-
+# RETURN CODE:	0=yes, 1=no
+# DEPENDENCIES: -
+################################################################################
+{
+	PROCESS=`COLUMNS=160 ps -a | grep ${SERVER_NAME} | egrep -v grep`
+
+	if [ "${?}" = "0" ]
+	then	return 0
+	else	return 1
+	fi
+}
+
+GetServerPID( )
+################################################################################
+# DESCRIPTION:	Get the Minecraft server process ID
+# PARAMETER:	-
+# RETURN CODE:	-
+# DISPLAY:	Server process ID
+# DEPENDENCIES: -
+################################################################################
+{
+	COLUMNS=160 ps -a \
+	| grep ${SERVER_NAME} \
+	| egrep -v grep \
+	| cut -d" " -f1
+}
+
+WaitForServerStop( )
+################################################################################
+# DESCRIPTION:	Wait till WAIT_FOR_SERVER_STOP for Minecraft server stop
+# PARAMETER:	-
+# RETURN CODE:	0=OK, 1=error
+# DEPENDENCIES: -
+################################################################################
+{
+	N=0
+	while true
+	do	if IsServerLoaded
+		then	N=`expr ${N} + 1`
+			if [ "${N}" = "${WAIT_FOR_SERVER_STOP}" ]
+			then	return 1
+			fi
+			sleep 1
+
+		else	return 0
+		fi
+	done
+}
+
+SyncServer( )
+################################################################################
+# DESCRIPTION:	Ask the Minecraft server to save its running data to disk
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	ExecuteCommand "save-all"
+}
+
+StopServer( )
+################################################################################
+# DESCRIPTION:	Stop the Minecraft server
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	SyncServer
+
+	ExecuteCommand "stop"
+	WaitForServerStop
+
+	if [ "${?}" = "1" ]
+	then	PID=`GetServerPID`
+
+		kill -TERM ${PID}
+		WaitForServerStop
+
+		if [ "${?}" = "1" ]
+		then	kill -KILL ${PID}
+			WaitForServerStop
+		fi
+	fi
+}
+
+RestartServer( )
+################################################################################
+# DESCRIPTION:	Stop and restart the Minecraft server
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	StopServer
+	StartServer
+}
+
+WaitForServerStart( )
+################################################################################
+# DESCRIPTION:	Wait for a log message indicating the Minecraft server is ready
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: -
+# TODO:		Testing for the hour only is not very reliable...
+#		Could wait for a long time!
+################################################################################
+{
+	HOUR=`date "+%H"`
+
+	sleep ${WAIT_FOR_SERVER_START}
+	while true
+	do	RESTART_HOUR=`grep "${SERVER_STARTED_MESSAGE}" logs/latest.log | sed -e "s/^.//" -e "s/:.*//" | tail -1`
+
+		if [ "${RESTART_HOUR}" = "" -o "${RESTART_HOUR}" != "${HOUR}" ]
+		then	sleep 1
+
+		else	return
+		fi
+	done
+}
+
+IsServerActive( )
+################################################################################
+# DESCRIPTION:	Test if the Minecraft server is active (not frozen)
+# PARAMETER:	-
+# RETURN CODE:	0=yes, 1=no
+# DEPENDENCIES: -
+################################################################################
+{
+	MARKER=`date "+%s"`
+	ExecuteCommand "msg NonExistent ${MARKER}-test Testing server availability"
+	sleep ${WAIT_FOR_MARKER_LOGGING}
+
+	if grep -q "$MARKER-test" ${SERVER_ROOT}/logs/latest.log
+	then	return 0
+
+	else	return 1
+	fi
+}
+
+FixIncorrectPlayersPositions( )
+################################################################################
+# DESCRIPTION:	Fix erroneous position coordinates for players
+#		eg. lines such as >>    - !double "1.7976931348623157e+308"<<
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: nbt2yaml utility, Essentials Bukkit plugin
+################################################################################
+{
+	ListPlayers \
+	| while read LINE
+	do
+		UUID=`echo "${LINE}" | cut -d" " -f1`
+		NAME=`echo "${LINE}" | cut -d" " -f2`
+
+		if [ "${UUID}" = "" ]
+		then	LogError "FixIncorrectPlayersPositions - Cannot extract UUID from ${LINE}"
+		else	nbt2yaml world/playerdata/${UUID}.dat 2> /dev/null | grep -q "e+308"
+	
+			if [ "$?" = "0" ]
+			then	LogError "Player ${NAME} (${UUID}) has incorrect starting position"
+	
+				nbt2yaml world/playerdata/${UUID}.dat \
+				| awk	'
+					/^    . - SpawnY: /		{
+										SPAWN_Y=$0
+										gsub(/^    . - SpawnY: /, "", SPAWN_Y)
+									}
+					/^    . - SpawnZ: /		{
+										SPAWN_Z=$0
+										gsub(/^    . - SpawnZ: /, "", SPAWN_Z)
+									}
+					/^    . - SpawnX: /		{
+										SPAWN_X=$0
+										gsub(/^    . - SpawnX: /, "", SPAWN_X)
+									}
+					/^    . - SpawnForced: /	{
+										gsub(/0/, "1")
+									}
+					/^    . - Dim: /		{
+										DIM=$0
+										gsub(/^    . - Dim: /, "", DIM)
+									}
+					/^  - Dimension: /		{
+										printf "  - Dimension: %s\n", DIM
+										next
+									}
+					/^  - Pos: !list_double/	{
+										printf "  - Pos: !list_double\n"
+										getline
+										printf "    - !double \"%s.0\"\n", SPAWN_X
+										getline
+										printf "    - !double \"%s.0\"\n", SPAWN_Y
+										getline
+										printf "    - !double \"%s.0\"\n", SPAWN_Z
+										next
+									}
+									{
+										print
+									}
+					' \
+				| tee ${TMP}/$$.yml \
+				| yaml2nbt - \
+				> ${TMP}/$$.dat \
+				2> ${TMP}/$$.err
+				
+				RESULT=`diff -sq world/playerdata/${UUID}.dat ${TMP}/$$.dat | sed "s/.* //"`
+				if [ "${RESULT}" = "identical" ]
+				then	LogError "Player ${NAME} (${UUID}) starting position fix FAILED!"
+				else	if [ -s ${TMP}/$$.err ]
+					then	LogError "Player ${NAME} (${UUID}) starting position fix FAILED!"
+						echo "{" >> ${DEBUG_FILE}
+						cat ${TMP}/$$.err >> ${DEBUG_FILE}
+						echo "}" >> ${DEBUG_FILE}
+			
+					elif [ -s ${TMP}/$$.dat ]
+					then	if [ ! -d world/playerdata/BACKUP ]
+						then	LogError "Creating the world/playerdata/BACKUP directory"
+							mkdir -p world/playerdata/BACKUP
+						fi
+			
+						mv -f world/playerdata/${UUID}.dat world/playerdata/BACKUP
+						mv -f ${TMP}/$$.dat world/playerdata/${UUID}.dat
+						
+					else 	LogError "Player ${NAME} (${UUID}) starting position fix FAILED! YAML resulting file has 0 size."
+					fi
+				fi
+				rm -f ${TMP}/$$.err
+	
+				ESSENTIALS_USERDATA=plugins/Essentials/userdata/`echo "${NAME}" | tr "[A-Z]" "[a-z]"`.yml
+				if [ -f "${ESSENTIALS_USERDATA}" ]
+				then	cat ${TMP}/$$.yml ${ESSENTIALS_USERDATA} \
+					| awk	'
+						BEGIN				{
+											LOCATION="first file"
+										}
+						/^    . - SpawnY: /		{
+											SPAWN_Y=$0
+											gsub(/^    . - SpawnY: /, "", SPAWN_Y)
+										}
+						/^    . - SpawnZ: /		{
+											SPAWN_Z=$0
+											gsub(/^    . - SpawnZ: /, "", SPAWN_Z)
+										}
+						/^    . - SpawnX: /		{
+											SPAWN_X=$0
+											gsub(/^    . - SpawnX: /, "", SPAWN_X)
+										}
+						/^    . - Dim: /		{
+											DIM=$0
+											gsub(/^    . - Dim: /, "", DIM)
+										}
+						/^  - Rotation: !list_float/	{
+											getline
+											YAW=$0
+											gsub(/^    - /, "", YAW)
+		
+											getline
+											PITCH=$0
+											gsub(/^    - /, "", PITCH)
+										}
+						/^uuid: /			{
+											LOCATION="second file"
+										}
+						/^logoutlocation:/		{
+											printf "logoutlocation:\n"
+											getline
+											printf "  world: world\n"
+											getline
+											printf "  x: %s.0\n", SPAWN_X
+											getline
+											printf "  y: %s.0\n", SPAWN_Y
+											getline
+											printf "  z: %s.0\n", SPAWN_Z
+											getline
+											printf "  yaw: %s\n", YAW
+											getline
+											printf "  pitch: %s\n", PITCH
+											next
+										}
+										{
+											if (LOCATION == "second file")
+											{
+												print
+											}
+										}
+						' \
+					> ${TMP}/$$.2.yml
+					mv ${TMP}/$$.2.yml ${ESSENTIALS_USERDATA}
+				fi
+				rm -f ${TMP}/$$.yml
+			fi
+		fi
+	done
+}
+
+RestartServerIfCrashed( )
+################################################################################
+# DESCRIPTION:	Test if the Minecraft server is involuntarily stopped and then restart it
+# PARAMETER:	-
+# RETURN CODE:	0=ok, 1=was crashed
+# DEPENDENCIES: -
+################################################################################
+{
+	if IsServerLoaded
+	then	return 0
+
+	else	if [ -f ${NO_RESTART_FILE} ]
+		then	echo "The server has been stopped"
+
+		else	LogError "Server crashed"
+
+			# As a possible cause of crash, fix players positions:
+			FixIncorrectPlayersPositions
+
+			StartServer
+		fi
+
+		return 1
+	fi
+}
+
+RestartServerIfFrozen( )
+################################################################################
+# DESCRIPTION:	Test if the Minecraft server is frozen and then restart it
+# PARAMETER:	-
+# RETURN CODE:	0=ok, 1=was frozen
+# DEPENDENCIES: -
+################################################################################
+{
+	if IsServerActive
+	then	return 0
+
+	else	LogError "Server frozen"
+
+		# In case of false positive, we try the following command which should not work:
+		AddToChat "Restarting server in ${WAIT_BEFORE_SERVER_RESTART} seconds (freeze detected)"
+
+		sleep ${WAIT_BEFORE_SERVER_RESTART}
+		StopServer
+
+		# As a usual cause of freeze, fix players positions:
+		FixIncorrectPlayersPositions
+
+		StartServer
+
+		return 1
+	fi
+
+	return 0
+}
+
+RestartServerIfTooManyEntitites( )
+################################################################################
+# DESCRIPTION:	Test if the Minecraft server has too many entities and then restart it
+# PARAMETER:	-
+# RETURN CODE:	0=ok, 1=was overloaded with entities
+# DEPENDENCIES: -
+# TODO:		Use the harda plugin debug commands if available
+################################################################################
+{
+	MARKER=`date "+%s"`
+	ExecuteCommand "msg NonExistent ${MARKER}-begin Checking entities count"
+	ExecuteCommand "mem"
+	ExecuteCommand "msg NonExistent ${MARKER}-end Checking entities count"
+	sleep 1
+	awk "/$MARKER-begin/, /$MARKER-end/" ${SERVER_ROOT}/logs/latest.log | sed -e "s/^.*INFO\]: //" -e "s/\[.//g" -e "s/;[0-9]*;[0-9]*m//g" -e "s/,//g" | grep -v "\[Server\]" | grep -v "CONSOLE" > ${TMP}/$$.out
+	
+	grep "entities" ${TMP}/$$.out \
+	| while read LINE
+	do	ENTITIES_COUNT=`echo "${LINE}" | sed -e "s/^.*chunks //" -e "s/ entities.*//"`
+		if [ "${ENTITIES_COUNT}" -gt "${ENTITIES_LIMIT}" ]
+		then	LogError "Too many entities: ${LINE}"
+			AddToChat "Restarting server in ${WAIT_BEFORE_SERVER_RESTART} seconds (${ENTITIES_COUNT} entities loaded, over the limit of ${ENTITIES_LIMIT})"
+			sleep ${WAIT_BEFORE_SERVER_RESTART}
+			RestartServer
+
+			rm ${TMP}/$$.out
+			return 1
+		fi
+	done
+	
+	rm ${TMP}/$$.out
+	return 0
+}
+
+################################################################################################################################################################
+
+ListPlayers( )
+################################################################################
+# DESCRIPTION:	List all known players with their name & UUID
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	egrep -v "({|})" usernamecache.json \
+	| sed -e "s/^ *\"//" -e "s/\": / /" -e "s/[\",]//g"
+}
+
+GetOnlinePlayers( )
+################################################################################
+# DESCRIPTION:	List the names of connected players
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: - (but knows about Essentials Bukkit plugin)
+################################################################################
+{
+	MARKER=`date "+%s"`
+	ExecuteCommand "msg NonExistent ${MARKER}-begin Checking connected players"
+	ExecuteCommand "list"
+	ExecuteCommand "msg NonExistent ${MARKER}-end Checking connected players"
+	sleep 1
+
+	awk "/$MARKER-begin/, /$MARKER-end/" ${SERVER_ROOT}/logs/latest.log \
+	| sed -e "s/^.*INFO\]: //" -e "s/\[.//g" -e "s/;[0-9]*;[0-9]*m//g" -e "s/,//g" \
+	| grep -v "\[Server\]" \
+	| grep -v "CONSOLE" \
+	| tail +3 \
+	| sed -e "s/.*: //" -e "s/\[AFK\]//g" -e "s/,//g" -e "s/ /\\
+/" \
+	| while read LINE
+	do	case "${LINE}" in
+			~*)	NICKNAME=`echo "${LINE}" | cut -c 2-`
+				GetNameFromNickname "${NICKNAME}" ;;
+			*)	echo "${LINE}" ;;
+		esac
+	done
+}
+
+IsPlayerOnline( )
+################################################################################
+# DESCRIPTION:	Test if the specified player is online
+# PARAMETER:	Player name
+# RETURN CODE:	0=OK, 1=error
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "IsPlayerOnline - missing arg"
+		return 1
+	fi
+
+	PLAYER=`GetOnlinePlayers | grep "^${1}$"`
+
+	if [ "${PLAYER}" = "${1}" ]
+	then	return 0
+
+	else	return 1
+	fi
+}
+
+GetNameFromUUID( )
+################################################################################
+# DESCRIPTION:	Get the name corresponding to an UUID
+# PARAMETER:	Player UUID
+# RETURN CODE:	0=yes, 1=no
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetNameFromUUID - missing arg"
+		return 1
+	fi
+
+	grep -i "\"${1}\"" usernamecache.json \
+	| sed -e "s/.*: \"//" -e "s/\",.*//"
+
+	return 0
+}
+
+GetUUIDFromName( )
+################################################################################
+# DESCRIPTION:	Get the UUID corresponding to a name
+# PARAMETER:	Player name
+# RETURN CODE:	0=OK, 1=error
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetUUIDFromName - missing arg"
+		return 1
+	fi
+
+	grep -i "\"${1}\"" usernamecache.json \
+	| sed -e "s/\":.*//" -e "s/^ *\"//"
+
+	return 0
+}
+
+GetGroupFromUUID( )
+################################################################################
+# DESCRIPTION:	Get a player's group from his UUID
+# PARAMETER:	Player UUID
+# RETURN CODE:	0=OK, 1=error
+# DEPENDENCIES: PermissionsEx Bukkit plugin
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetGroupFromUUID - missing arg"
+		return 1
+	fi
+
+	GROUP=`awk -v PARAM="${1}" '$0 ~ PARAM,lastline' plugins/PermissionsEx/permissions.yml \
+		| awk '/^    group:/ {getline ; print ; exit}' \
+		| sed "s/ *- //"`
+
+	if [ "${GROUP}" = "" ]
+	then	echo "${DEFAULT_GROUP}"
+	else	echo "${GROUP}"
+	fi
+
+	return 0
+}
+
+GetNicknameFromName( )
+################################################################################
+# DESCRIPTION:	Get a player's nickname from his name
+# PARAMETER:	Player name
+# RETURN CODE:	0=OK, 1+=errors
+# DEPENDENCIES: Essentials Bukkit plugin
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetNicknameFromName - missing arg"
+		return 1
+	fi
+
+	FILENAME=plugins/Essentials/userdata/`echo "${1}" | tr [A-Z] [a-z]`.yml
+	if [ -f "${FILENAME}" ]
+	then	grep "^nickname: " ${FILENAME} \
+		| sed "s/.*: //"
+	else	echo ""
+		return 2
+	fi
+
+	return 0
+}
+
+GetNameFromNickname( )
+################################################################################
+# DESCRIPTION:	Get the first player name from a nickname
+# PARAMETER:	Player nickname
+# RETURN CODE:	0=OK, 1+=errors
+# DEPENDENCIES: Essentials Bukkit plugin
+# CAVEAT:	Unfortunately, nicknames are now unique in Essentials. We only retrieve the first one...
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetNameFromNickname - missing arg"
+		return 1
+	fi
+
+	FIRST_LOWERCASE_NAME=`grep " ${1}$" plugins/Essentials/userdata/* | sed -e "s/\.yml:nickname: .*//" -e "s,plugins/Essentials/userdata/,," | head -1`
+
+	grep -i "\"${FIRST_LOWERCASE_NAME}\"" usernamecache.json \
+	| sed -e "s/.*: \"//" -e "s/\",*$//"
+
+	return 0
+}
+
+IsPlayerBanned( )
+################################################################################
+# DESCRIPTION:	Test if the specified player is banned
+#		(beware, prints "true" or "false")
+# PARAMETER:	Player name
+# RETURN CODE:	0=OK, 1=errors
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "IsPlayerBanned - missing arg"
+		return 1
+	fi
+
+	if grep -q "\"${1}\"" banned-players.json
+	then	echo "true"
+	else	echo "false"
+	fi
+
+	return 0
+}
+
+GetLastSeenTimestampFromName( )
+################################################################################
+# DESCRIPTION:	Get a player's logout timestamp from his name
+# PARAMETER:	Player name
+# RETURN CODE:	0=OK, 1+=errors
+# DEPENDENCIES: Essentials Bukkit plugin
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetLastSeenTimestampFromName - missing arg"
+		return 1
+	fi
+
+	LOWERCASE_NAME=`echo "${1}" | tr [A-Z] [a-z]`
+	FILENAME=plugins/Essentials/userdata/${LOWERCASE_NAME}.yml
+	if [ -f "${FILENAME}" ]
+	then	TIMESTAMP=`grep "^  logout: " ${FILENAME} | sed -e "s/.*: //" -e "s/[0-9][0-9][0-9]$//"`
+		if [ "${TIMESTAMP}" != "" ]
+		then	echo "${TIMESTAMP}"
+		else	echo "0"
+		fi
+
+	else	echo "0"
+		return 2
+	fi
+
+	return 0
+}
+
+GetDateFromTimestamp( )
+################################################################################
+# DESCRIPTION:	Get a YYYY-MM-DD HH:MM:SS date from a timestamp
+# PARAMETER:	Timestamp
+# RETURN CODE:	0=OK, 1=errors
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetDateFromTimestamp - missing arg"
+		return 1
+	fi
+
+	date -r ${1} "+%Y-%m-%d %H:%M:%S"
+
+	return 0
+}
+
+GetLastSeenSecondsFromName( )
+################################################################################
+# DESCRIPTION:	Get a player's delay in seconds since logout from his name
+# PARAMETER:	Player name
+# RETURN CODE:	0=OK, 1=errors
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetLastSeenSecondsFromName - missing arg"
+		return 1
+	fi
+
+	DATE=`date "+%s"`
+	LASTSEEN=`GetLastSeenTimestampFromName ${1}`
+
+	expr ${DATE} - ${LASTSEEN}
+
+	return 0
+}
+
+GetIrlLocationFromName( )
+################################################################################
+# DESCRIPTION:	Get a Player's real life location from his Minecraft name
+# PARAMETER:	Player name
+# RETURN CODE:	0=OK, 1+=errors
+# DEPENDENCIES: Essentials Bukkit plugin, http://ipinfo.io/ web service
+################################################################################
+{
+	if [ "$#" != 1 ]
+	then	LogError "GetIrlLocationFromName - missing arg"
+		return 1
+	fi
+
+	LOWERCASE_NAME=`echo "${1}" | tr [A-Z] [a-z]`
+	FILENAME=plugins/Essentials/userdata/${LOWERCASE_NAME}.yml
+	if [ -f "${FILENAME}" ]
+	then	IP=`grep "^ipAddress: " ${FILENAME} | sed -e "s/.*: //"`
+	
+		fetch -qo - http://ipinfo.io/${IP} \
+		| awk '/<pre>/,/<\/pre>/' \
+		| grep "^    &quot;" \
+		| sed -e "s/&quot;//g" -e "s/^    //" -e "s/,$//" \
+		| awk	'
+			/^city: /	{gsub(/city: /,""); CITY=$0}
+			/^region: /	{gsub(/region: /,""); REGION=$0}
+			/^country: /	{gsub(/country: /,""); COUNTRY=$0}
+			/^loc: /	{gsub(/loc: /,""); LOC=$0}
+			END		{printf "%s,%s,%s,%s\n", COUNTRY, REGION, CITY, LOC}
+			'
+	else	return 2
+	fi
+
+	return 0
+}
+
+AddItemToOfflinePlayerInventory( )
+################################################################################
+# DESCRIPTION:	Insert an item in an offline player's inventory
+# PARAMETER:	Player name, Item ID, Item quantity, Item data value
+# DEPENDENCIES: nbt2yaml utility
+################################################################################
+{
+	UUID=`GetUUIDFromName ${1}`
+	if [ -f world/playerdata/${UUID}.dat ]
+	then	nbt2yaml world/playerdata/${UUID}.dat \
+		| awk -vITEM=${2} -vQUANTITY=${3} -vVALUE=${4} '
+			BEGIN				{
+								N=0
+								INSERTED="false"
+								IN_INVENTORY="false"
+								AFTER_SLOTS="false"
+							}
+			/^  - Inventory: !list_end/	{
+								# Insert in empty inventory list
+								printf "  - Inventory: !list_compound\n"
+								printf "    - - Slot: !byte \"0\"\n"
+								printf "      - id: !short \"%s\"\n", ITEM
+								printf "      - Count: !byte \"%s\"\n", QUANTITY
+								printf "      - Damage: !short \"%s\"\n", VALUE
+								INSERTED="true"
+								IN_INVENTORY="true"
+								next
+							}
+			/^  - Inventory: !list_comp/	{
+								IN_INVENTORY="true"
+							}
+			/^    - - Slot: /		{
+								if (IN_INVENTORY == "true")
+								{
+									AFTER_SLOTS="true"
+									if (INSERTED == "false")
+									{
+										SLOT_NUMBER=$5
+										gsub(/"/,"", SLOT_NUMBER)
+			
+										if (SLOT_NUMBER != N)
+										{
+											if (N < 36)
+											{
+												# Insert in an existing inventory list
+												printf "    - - Slot: !byte \"%s\"\n", N
+												printf "      - id: !short \"%s\"\n", ITEM
+												printf "      - Count: !byte \"%s\"\n", QUANTITY
+												printf "      - Damage: !short \"%s\"\n", VALUE
+												INSERTED="true"
+											}
+										}
+			
+										N = N + 1
+									}
+								}
+								# else we are inside EnderItems contents...
+							}
+			/^  - /				{
+								if (AFTER_SLOTS == "true")
+								{
+									IN_INVENTORY = "false"
+									if (INSERTED == "false" && N < 36)
+									{
+										# Insert at end of inventory list
+										printf "    - - Slot: !byte \"%s\"\n", N
+										printf "      - id: !short \"%s\"\n", ITEM
+										printf "      - Count: !byte \"%s\"\n", QUANTITY
+										printf "      - Damage: !short \"%s\"\n", VALUE
+										INSERTED="true"
+									}
+								}
+							}
+							{
+								print
+							}
+		' \
+		| yaml2nbt - \
+		> ${TMP}/$$.dat \
+		2> ${TMP}/$$.err
+	
+		RESULT=`diff -sq world/playerdata/${UUID}.dat ${TMP}/$$.dat | sed "s/.* //"`
+		if [ "${RESULT}" = "identical" ]
+		then	LogError "AddItemToPlayerInventory(${1} ${2} ${3} ${4}) FAILED! See ${TMP}/$$.dat"
+		else	if [ -s ${TMP}/$$.err ]
+			then	LogError "AddItemToPlayerInventory(${1} ${2} ${3} ${4}) FAILED!"
+				echo "{" >> ${DEBUG_FILE}
+				cat ${TMP}/$$.err >> ${DEBUG_FILE}
+				echo "}" >> ${DEBUG_FILE}
+	
+			elif [ -s ${TMP}/$$.dat ]
+			then	if [ ! -d world/playerdata/BACKUP ]
+				then	LogError "Creating the world/playerdata/BACKUP directory"
+					mkdir -p world/playerdata/BACKUP
+				fi
+	
+				mv -f world/playerdata/${UUID}.dat world/playerdata/BACKUP
+				mv -f ${TMP}/$$.dat world/playerdata/${UUID}.dat
+				
+			else 	LogError "AddItemToPlayerInventory(${1} ${2} ${3} ${4}) FAILED! YAML resulting file has 0 size."
+			fi
+		fi
+		rm -f ${TMP}/$$.err
+	else	LogError "AddItemToPlayerInventory(${1} ${2} ${3} ${4}) FAILED! world/playerdata/${UUID}.dat does not exist."
+	fi
+}
+
+AddItemToPlayerInventory( )
+################################################################################
+# DESCRIPTION:	Give an item to a player whether online or offline
+# PARAMETER:	Player name, Item ID, Item quantity, Item data value
+################################################################################
+{
+	if IsPlayerOnline "${1}"
+	then	ExecuteCommand "give ${1} ${2} ${3} ${4}"
+
+	else	AddItemToOfflinePlayerInventory ${1} ${2} ${3} ${4}
+	fi
+}
+
+AddFileToOfflinePlayerInventory( )
+################################################################################
+# DESCRIPTION:	Insert custom item(s) from a file in an offline player's inventory
+# PARAMETER:	File name
+# DEPENDENCIES: nbt2yaml utility
+################################################################################
+{
+	UUID=`GetUUIDFromName ${1}`
+	nbt2yaml world/playerdata/${UUID}.dat \
+	| awk -v FILENAME=${1} \
+		'
+		BEGIN				{
+							N=0
+							INSERTED="false"
+							IN_INVENTORY="false"
+							AFTER_SLOTS="false"
+						}
+		/^  - Inventory: !list_end/	{
+							# Insert in empty inventory list
+							printf "  - Inventory: !list_compound\n"
+							printf "    - - Slot: !byte \"0\"\n"
+							system ( "cat " FILENAME )
+							INSERTED="true"
+							IN_INVENTORY="true"
+							next
+						}
+		/^  - Inventory: !list_comp/	{
+							IN_INVENTORY="true"
+						}
+		/^    - - Slot: /		{
+							if (IN_INVENTORY == "true")
+							{
+								AFTER_SLOTS="true"
+								if (INSERTED == "false")
+								{
+									SLOT_NUMBER=$5
+									gsub(/"/,"", SLOT_NUMBER)
+		
+									if (SLOT_NUMBER != N)
+									{
+										if (N < 36)
+										{
+											# Insert in an existing inventory list
+											printf "    - - Slot: !byte \"%s\"\n", N
+											system ( "cat " FILENAME )
+											INSERTED="true"
+										}
+									}
+		
+									N = N + 1
+								}
+							}
+							# else we are inside EnderItems contents...
+						}
+		/^  - /				{
+							if (AFTER_SLOTS == "true")
+							{
+								IN_INVENTORY = "false"
+								if (INSERTED == "false" && N < 36)
+								{
+									# Insert at end of inventory list
+									printf "    - - Slot: !byte \"%s\"\n", N
+									system ( "cat " FILENAME )
+									INSERTED="true"
+								}
+							}
+						}
+						{
+							print
+						}
+	' \
+	| yaml2nbt - \
+	> ${TMP}/$$.dat \
+	2> ${TMP}/$$.err
+
+	RESULT=`diff -sq world/playerdata/${UUID}.dat ${TMP}/$$.dat | sed "s/.* //"`
+	if [ "${RESULT}" = "identical" ]
+	then	LogError "AddFileToOfflinePlayerInventory(${1}) FAILED! See ${TMP}/$$.dat"
+	else	if [ -s ${TMP}/$$.err ]
+		then	LogError "AddFileToOfflinePlayerInventory(${1}) FAILED!"
+			echo "{" >> ${DEBUG_FILE}
+			cat ${TMP}/$$.err >> ${DEBUG_FILE}
+			echo "}" >> ${DEBUG_FILE}
+
+		elif [ -s ${TMP}/$$.dat ]
+		then	if [ ! -d world/playerdata/BACKUP ]
+			then	LogError "Creating the world/playerdata/BACKUP directory"
+				mkdir -p world/playerdata/BACKUP
+			fi
+
+			mv -f world/playerdata/${UUID}.dat world/playerdata/BACKUP
+			mv -f ${TMP}/$$.dat world/playerdata/${UUID}.dat
+			
+		else 	LogError "AddFileToOfflinePlayerInventory(${1}) FAILED! YAML resulting file has 0 size."
+		fi
+	fi
+	rm -f ${TMP}/$$.err
+}
+
+################################################################################################################################################################
+
+ToggleNbtValue( )
+################################################################################
+# DESCRIPTION:	Toggle a value in an NBT file
+# PARAMETER:	File name, Player name, Pattern to search for, Initial value, Destination value
+# EXAMPLE:	ToggleNbtValue "world/LOTR/players" "HubTou" "^  - HideOnMap: " "1" "0"
+# DEPENDENCIES: nbt2yaml utility
+# TODO:		There's an issue with UTF8 encoding inside some NBT files
+################################################################################
+{
+	if [ -f "${1}" ]
+	then	if ! IsPlayerOnline "${2}"
+		then	nbt2yaml ${1} \
+			| awk -v PATTERN="$3" -v SRC_VALUE="$4" -v DEST_VALUE="$5" \
+				'
+				$0 ~ PATTERN	{
+							gsub(SRC_VALUE, DEST_VALUE)
+							print $0
+							next
+						}
+						{
+							print
+						}
+				' \
+			| yaml2nbt - \
+			> ${TMP}/$$.dat \
+			2> ${TMP}/$$.err
+
+			RESULT=`diff -sq ${1} ${TMP}/$$.dat | sed "s/.* //"`
+			if [ "${RESULT}" = "identical" ]
+			then	LogError "ToggleNbtValue(${1} ${2} ${3} ${4}) ${5}) FAILED!"
+			else	if [ -s ${TMP}/$$.err ]
+				then	LogError "ToggleNbtValue(${1} ${2} ${3} ${4}) ${5}) FAILED!"
+					echo "{" >> ${DEBUG_FILE}
+					cat ${TMP}/$$.err >> ${DEBUG_FILE}
+					echo "}" >> ${DEBUG_FILE}
+		
+				elif [ -s ${TMP}/$$.dat ]
+				then	BACKUP_DIR=`dirname ${1}`/BACKUP
+					if [ ! -d ${BACKUP_DIR} ]
+					then	mkdir -p ${BACKUP_DIR}
+					fi
+		
+					mv -f ${1} ${BACKUP_DIR}
+					mv -f ${TMP}/$$.dat ${1}
+					
+				else 	LogError "ToggleNbtValue(${1} ${2} ${3} ${4}) ${5}) FAILED! YAML resulting file has 0 size."
+				fi
+			fi
+			rm -f $${TMP}/$$.dat ${TMP}/$$.err
+		else	
+		fi
+	else	return 1
+	fi
+	return 0
+}
