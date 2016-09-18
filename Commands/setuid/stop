@@ -1,0 +1,16 @@
+#!/bin/sh
+
+. .server-settings
+
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Stopping server for maintenance in 1 minute!"`printf \\\r`
+if [ $# = "1" ]
+then	screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Server will be back online in about ${1} minutes"`printf \\\r`
+fi
+sleep 50
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Stopping server for maintenance in 10 seconds!!"`printf \\\r`
+sleep 10
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Stopping server for maintenance now!!!"`printf \\\r`
+sleep 1
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "save-all"`printf \\\r`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "stop"`printf \\\r`
+
