@@ -1,0 +1,5 @@
+#!/bin/sh
+
+. .minecraft-library
+
+RestartServerIfCrashed && RestartServerIfFrozen && RestartServerIfTooManyEntitites
