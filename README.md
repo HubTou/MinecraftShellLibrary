@@ -1,6 +1,7 @@
 About Minecraft Shell Library
 =============================
 An API for Minecraft / Bukkit server management and scripting.
+Check http://lotr-minecraft-mod-exiles.wikia.com/wiki/Minecraft_Shell_Library for functions list.
 
 
 Installation
