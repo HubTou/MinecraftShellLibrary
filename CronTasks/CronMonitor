@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# This script is intended to be used as a CRON command
+# On my server, I use the following configuration in /etc/crontab to run it every 5 minutes:
+#
+# #minute       hour    mday    month   wday    who     command
+# */5   *       *       *       *       minecraft       /usr/bin/nice /home/minecraft/CronTasks/CronMonitor
+
 . .minecraft-library
 
 RestartServerIfCrashed && RestartServerIfFrozen && RestartServerIfTooManyEntitites
