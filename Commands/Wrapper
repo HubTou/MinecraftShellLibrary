@@ -1,0 +1,6 @@
+#!/bin/sh
+
+. .server-settings
+
+COMMAND=`basename $0`
+su -m ${SERVER_USER} -c "${SERVER_ROOT}/Commands/setuid/${COMMAND} $*"
