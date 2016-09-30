@@ -1,7 +1,0 @@
-#!/bin/sh
-
-. .server-settings
-
-if [ $# = "1" ]
-then	screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "ban ${1}"`printf \\\r`
-fi
