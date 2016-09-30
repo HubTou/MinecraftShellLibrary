@@ -39,40 +39,28 @@ Developed and tested only on FreeBSD 10.1.
 
 Versions and changelog
 ======================
-1.10	2016-09-30	Added a StripColors() function for filtering out color codes from logfiles
-
+1.10	2016-09-30	
+			Added a StripColors() function for filtering out color codes from logfiles
 			Added a DisplayChat() function for filtering the chat from a logfile
-
 			Added a GetClientSideModsForPlayer() function for getting the list of client side mods used by a player
-
 			Added a GetForbiddenModsForPlayer() function for getting the list of forbidden client side mods used by a player
-
 			Corrected errors in ToggleNbtValue(), GetOnlinePlayers()
-
+			
 			Made generic wrappers for commands, with or without results to display
-
 			Separated the /mem and /mv who commands from the mem command
-
 			Corrected display glitches from the mem command
-
 			Moved all commands out of the server root directory, back in the Commands subdir
-
 			Added all the standard Minecraft commands
-
+			
 			Added a Script sub-directory to store Scripts
-
 			Moved start* and stop commands to the Scripts subdirectory
-
 			Made the start command obey the .dontrestart directive and check if the server is already loaded
-
 			Added a mcchat script to display the chat
-
 			Added a mclast script to display players' log in and out from logfiles
-
+			
 			Added a CronDetectCheaters Cron script to check if players are using forbidden client side mods and, if yes, apply justice to them
-
 			Added MSL_ForbiddenMods.txt and MSL_ForbiddenMods-full.txt config files in tge config subdir with the list of forbidden mods
-
+			
 			Added usage and uninstall targets to the Makefile
 
 1.00	2016-09-18	Initial public release
