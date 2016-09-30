@@ -1,0 +1,14 @@
+#!/bin/sh
+
+. .minecraft-library
+
+if [ "$#" = 0 ]
+then	DisplayChat ${SERVER_ROOT}/logs/latest.log
+else	while [ "$#" != 0 ]
+	do
+		if [ -f "$1" ]
+		then	DisplayChat $1
+		fi
+		shift
+	done
+fi

@@ -1,0 +1,105 @@
+#!/bin/sh
+# @(#) mclast v1.00 (2016-09-29) / Hubert Tournier 
+
+. .minecraft-library
+
+ProcessLogfile( )
+{
+	FILENAME=`basename $1`
+	case ${FILENAME} in
+		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9]*.log.gz)	CMD=zcat
+										TODAY=`echo ${FILENAME} | cut -c1-10`
+										YEAR=`echo ${FILENAME} | cut -c1-4`
+										MONTH=`echo ${FILENAME} | cut -c6-7`
+										DAY=`echo ${FILENAME} | cut -c9-10`
+										YESTERDAY=`date -v${YEAR}y -v${MONTH}m -v${DAY}d -v-1d "+%F"`
+										;;
+		*.log)	CMD=cat
+			TODAY=`date "+%F"`
+			YESTERDAY=`date -v-1d "+%F"`
+			;;
+	esac
+
+	${CMD} $1 \
+	| egrep "( UUID of player | Client attempting to join with | logged in with entity id | left the game\.)" \
+	| awk -v "YESTERDAY=${YESTERDAY}" -v "TODAY=${TODAY}" '
+							{
+								gsub(/^\[/, "")
+							}
+		/ UUID of player /			{
+								gsub(/\] \[User Authenticator \#[0-9]*\/INFO\]: UUID of player /, " ")
+								gsub(/ is /, " ")
+								TIME_IN=$1
+								PLAYER=$2
+								UUID=$3
+							}
+		/ Client attempting to join with /	{
+								gsub(/^.* Client attempting to join with [0-9]* mods : /, "")
+								gsub(/ /, "_")
+								MODS=$0
+							}
+		/ logged in with entity id /		{
+								gsub(/^.*Server thread.INFO.: [^\[]*../, "")
+								gsub(/:[0-9]*. logged in with entity id [0-9]* at \(/, "")
+								IP=$0
+								gsub(/\[.*/, "", IP)
+								COORD=$0
+								gsub(/^.*\[/, "", COORD)
+								gsub(/\] /, ":", COORD)
+								gsub(/, /, ":", COORD)
+								gsub(/\.[0-9]*/, "", COORD)
+								gsub(/\)/, "", COORD)
+
+								players[PLAYER,"time-in"] = TIME_IN
+								players[PLAYER,"uuid"] = UUID
+								players[PLAYER,"ip"] = IP
+								players[PLAYER,"coord"] = COORD
+								players[PLAYER,"mods"] = MODS
+							}
+		/ left the game\./			{
+								gsub(/\] \[Server thread.INFO.: /, " ")
+								gsub(/ left the game\./, "")
+								TIME_OUT=$1
+								PLAYER=$2
+
+								if ((PLAYER,"uuid") in players)
+								{
+									printf "%s %s %s %s %s %s %s %s %s\n", TODAY, players[PLAYER,"time-in"], TODAY, TIME_OUT, PLAYER, players[PLAYER,"uuid"], players[PLAYER,"ip"], players[PLAYER,"coord"], players[PLAYER,"mods"]
+									delete players[PLAYER,"time-in"]
+									delete players[PLAYER,"uuid"]
+									delete players[PLAYER,"ip"]
+									delete players[PLAYER,"coord"]
+									delete players[PLAYER,"mods"]
+								}
+								else
+								{
+									printf "%s %s %s %s %s %s %s %s %s\n", YESTERDAY, "??:??:??", TODAY, TIME_OUT, PLAYER, "?", "?", "?", "?"
+								}
+							}
+		END					{
+								for (i in players)
+								{
+									split(i,sep,SUBSEP)
+									printf "%s %s %s %s %s %s %s %s %s\n", TODAY, players[sep[1],"time-in"], TODAY, "ONLINE", sep[1], players[sep[1],"uuid"], players[sep[1],"ip"], players[sep[1],"coord"], players[sep[1],"mods"]
+									delete players[sep[1],"time-in"]
+									delete players[sep[1],"uuid"]
+									delete players[sep[1],"ip"]
+									delete players[sep[1],"coord"]
+									delete players[sep[1],"mods"]
+								}
+							}
+	' \
+	| sort
+}
+
+if [ "$#" = 0 ]
+then	ProcessLogfile ${SERVER_ROOT}/logs/latest.log
+else	while [ "$#" != 0 ]
+	do
+		if [ -f "$1" ]
+		then	ProcessLogfile $1
+		fi
+		shift
+	done
+fi
+
