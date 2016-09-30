@@ -1,0 +1,16 @@
+#!/bin/sh
+
+. .server-settings
+
+# mcCOMMAND should now be translated to COMMAND
+# and COMMAND_PARAM should now be translated to COMMAND PARAM
+COMMAND=`basename $0 | sed -e "s/^mc//" -e "s/_/ /g"`
+
+MARKER=`date "+%s"`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "msg NonExistent ${MARKER}-begin Executing command ${COMMAND}"`printf \\\r`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "${COMMAND} ${*}"`printf \\\r`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "msg NonExistent ${MARKER}-end Executing command ${COMMAND}"`printf \\\r`
+sleep 1
+awk "/$MARKER-begin Executing command ${COMMAND}/, /$MARKER-end Executing command ${COMMAND}/" ${SERVER_ROOT}/logs/latest.log \
+| grep -v "Executing command ${COMMAND}" \
+| tail +3

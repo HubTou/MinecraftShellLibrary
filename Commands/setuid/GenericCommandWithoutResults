@@ -1,0 +1,9 @@
+#!/bin/sh
+
+. .server-settings
+
+# mcCOMMAND should now be translated to COMMAND
+# and COMMAND_PARAM should now be translated to COMMAND PARAM
+COMMAND=`basename $0 | sed -e "s/^mc//" -e "s/_/ /g"`
+
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "${COMMAND} ${*}"`printf \\\r`

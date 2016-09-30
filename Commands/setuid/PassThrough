@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. .server-settings
+
+MARKER=`date "+%s"`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "msg NonExistent ${MARKER}-begin Executing passthrough command"`printf \\\r`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "${*}"`printf \\\r`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "msg NonExistent ${MARKER}-end Executing passthrough command"`printf \\\r`
+sleep 1
+awk "/$MARKER-begin Executing passthrough command/, /$MARKER-end Executing passthrough command/" ${SERVER_ROOT}/logs/latest.log \
+| grep -v "Executing passthrough command" \
+| tail +3
