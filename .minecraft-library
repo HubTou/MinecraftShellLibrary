@@ -1,5 +1,5 @@
 #!/bin/sh
-# @(#) .minecraft-library.sh v1.00 (2016-09-18) / Hubert Tournier 
+# @(#) .minecraft-library v1.10 (2016-09-30) / Hubert Tournier 
 
 # An API for Minecraft / Bukkit server management and scripting
 
@@ -11,6 +11,8 @@
 # LogError()				# Log an ERROR message
 # LogWarning()				# Log a warning message
 # LogInfo()				# Log an informational message
+# StripColors()				# Filter color codes from a logfile
+# DisplayChat()				# Displays the chat lines from a logfile
 #
 #-[ Minecraft commands ]--------------------------------------------------------
 # ExecuteCommand()			# Execute a Minecraft command from the console
@@ -49,6 +51,8 @@
 # AddItemToOfflinePlayerInventory	# Insert an item in an offline player's inventory
 # AddItemToPlayerInventory		# Give an item to a player whether online or offline
 # AddFileToOfflinePlayerInventory()	# Insert custom item(s) from a file in an offline player's inventory
+# GetClientSideModsForPlayer()		# Get a player's list of client side mods
+# GetForbiddenModsForPlayer()		# Returns a comma separated list of mods, empty for a clean player
 #
 #-[ NBT files management ]----------------------------------------------------
 # ToggleNbtValue()			# Toggle a value in an NBT file
@@ -76,6 +80,9 @@ then	export SERVER_STARTED_MESSAGE="! For help, type \"help\" or \"?\""
 fi
 
 . .server-settings
+
+export FORBIDDEN_MODS_LIST=${SERVER_ROOT}/config/MSL_ForbiddenMods.txt
+export FORBIDDEN_MODS_DETAILS=${SERVER_ROOT}/config/MSL_ForbiddenMods-full.txt
 
 cd ${SERVER_ROOT}
 
@@ -129,6 +136,43 @@ LogInfo( )
 ################################################################################
 {
 	FormatLogMessage info $* >> ${DEBUG_FILE}
+}
+
+StripColors( )
+################################################################################
+# DESCRIPTION:	Filter color codes from a logfile
+# PARAMETER:	-
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	sed -e "s/\[m//g" -e "s/\[0;[0-9]*;[0-9]*m//g"
+}
+
+DisplayChat( )
+################################################################################
+# DESCRIPTION:	Displays the chat lines from a logfile
+# PARAMETER:	0 (meaning latest.log) to 1 logfile name
+# RETURN CODE:	-
+# DEPENDENCIES: -
+################################################################################
+{
+	if [ "$#" = 0 ]
+	then	LOGFILE=${SERVER_ROOT}/logs/latest.log
+		CMD=cat
+	else	LOGFILE=$1
+		FILENAME=`basename $1`
+		case ${FILENAME} in
+			*.log.gz)	CMD=zcat ;;
+			*.log)		CMD=cat ;;
+		esac
+	fi
+
+	${CMD} ${LOGFILE} \
+	| grep "\[Netty IO #[0-9]*/INFO\]" \
+	| egrep -v "(Client protocol version|Client attempting to join with|Attempting connection with missing mods)" \
+	| sed "s/\[Netty IO #[0-9]*\/INFO\]: //" \
+	| StripColors
 }
 
 ################################################################################################################################################################
@@ -319,7 +363,7 @@ WaitForServerStart( )
 
 	sleep ${WAIT_FOR_SERVER_START}
 	while true
-	do	RESTART_HOUR=`grep "${SERVER_STARTED_MESSAGE}" logs/latest.log | sed -e "s/^.//" -e "s/:.*//" | tail -1`
+	do	RESTART_HOUR=`grep "${SERVER_STARTED_MESSAGE}" ${SERVER_ROOT}/logs/latest.log | sed -e "s/^.//" -e "s/:.*//" | tail -1`
 
 		if [ "${RESTART_HOUR}" = "" -o "${RESTART_HOUR}" != "${HOUR}" ]
 		then	sleep 1
@@ -574,7 +618,7 @@ RestartServerIfTooManyEntitites( )
 	ExecuteCommand "mem"
 	ExecuteCommand "msg NonExistent ${MARKER}-end Checking entities count"
 	sleep 1
-	awk "/$MARKER-begin/, /$MARKER-end/" ${SERVER_ROOT}/logs/latest.log | sed -e "s/^.*INFO\]: //" -e "s/\[.//g" -e "s/;[0-9]*;[0-9]*m//g" -e "s/,//g" | grep -v "\[Server\]" | grep -v "CONSOLE" > ${TMP}/$$.out
+	awk "/$MARKER-begin Checking entities count/, /$MARKER-end Checking entities count/" ${SERVER_ROOT}/logs/latest.log | sed -e "s/^.*INFO\]: //" -e "s/\[.//g" -e "s/;[0-9]*;[0-9]*m//g" -e "s/,//g" | grep -v "\[Server\]" | grep -v "CONSOLE" > ${TMP}/$$.out
 	
 	grep "entities" ${TMP}/$$.out \
 	| while read LINE
@@ -622,7 +666,7 @@ GetOnlinePlayers( )
 	ExecuteCommand "msg NonExistent ${MARKER}-end Checking connected players"
 	sleep 1
 
-	awk "/$MARKER-begin/, /$MARKER-end/" ${SERVER_ROOT}/logs/latest.log \
+	awk "/$MARKER-begin Checking connected players/, /$MARKER-end Checking connected players/" ${SERVER_ROOT}/logs/latest.log \
 	| sed -e "s/^.*INFO\]: //" -e "s/\[.//g" -e "s/;[0-9]*;[0-9]*m//g" -e "s/,//g" \
 	| grep -v "\[Server\]" \
 	| grep -v "CONSOLE" \
@@ -1113,6 +1157,55 @@ AddFileToOfflinePlayerInventory( )
 	rm -f ${TMP}/$$.err
 }
 
+GetClientSideModsForPlayer( )
+################################################################################
+# DESCRIPTION:	Get a player's list of client side mods
+# PARAMETER:	Player name
+# DEPENDENCIES: 
+# NOTES:	Only tested with KCauldron 
+################################################################################
+{
+	cat ${SERVER_ROOT}/logs/latest.log \
+	| awk	'
+		/\[User Authenticator #[0-9]*\/INFO\]: UUID of player /		{
+											gsub(/^.*: UUID of player /, "")
+											gsub(/ is /, "	")
+											PLAYER=$1
+										}
+		/\[Netty IO #[0-9]*\/INFO\]: Client attempting to join with/	{
+											gsub(/^.*: Client attempting to join with [0-9]* mods : /, "")
+											gsub(/ /, "_")
+											MODS=$0
+											printf "%s:%s\n", PLAYER, MODS
+										}
+		' \
+	| grep "^${PLAYER}:" \
+	| cut -d":" -f2 \
+	| tail -1
+}
+
+GetForbiddenModsForPlayer( )
+################################################################################
+# DESCRIPTION:	Returns a comma separated list of mods, empty for a clean player
+# PARAMETER:	Player name
+# DEPENDENCIES: 
+# NOTES:	Only tested with KCauldron 
+################################################################################
+{
+	{
+		GetClientSideModsForPlayer ${1} \
+		| tr ',' '\n' \
+		| sed "s/@.*//"
+
+		[ -f ${FORBIDDEN_MODS_LIST} ] \
+		&& cat ${FORBIDDEN_MODS_LIST}
+	} \
+	| sort \
+	| uniq -d \
+	| tr '\n' ',' \
+	| sed "s/,$//"
+}
+
 ################################################################################################################################################################
 
 ToggleNbtValue( )
@@ -1164,7 +1257,7 @@ ToggleNbtValue( )
 				fi
 			fi
 			rm -f $${TMP}/$$.dat ${TMP}/$$.err
-		else	
+		else	return 1
 		fi
 	else	return 1
 	fi
