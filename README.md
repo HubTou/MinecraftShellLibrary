@@ -39,7 +39,8 @@ Developed and tested only on FreeBSD 10.1.
 
 Versions and changelog
 ======================
-1.10	2016-09-30	
+1.10	2016-09-30
+
 			Added a StripColors() function for filtering out color codes from logfiles
 			Added a DisplayChat() function for filtering the chat from a logfile
 			Added a GetClientSideModsForPlayer() function for getting the list of client side mods used by a player
