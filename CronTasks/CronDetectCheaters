@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# This script is intended to be used as a CRON command
+# On my server, I use the following configuration in /etc/crontab to run it every 5 minutes:
+#
+# #minute	hour	mday	month	wday	who	command
+# */5	*	*	*	*	minecraft	/usr/bin/nice /home/minecraft/CronTasks/CronDetectCheaters
+#
+# And the minecraft account home directory is the Minecraft server root.
+
+. .minecraft-library
+
+TEMPBAN_DURATION=3d
+
+GetOnlinePlayers \
+| while read PLAYER
+do
+	MODS=`GetForbiddenModsForPlayer $PLAYER`
+	if [ "${MODS}" != "" ]
+	then	echo "${MODS}" \
+		| tr ',' '\n' \
+		| while read MOD
+		do
+			MOD_DETAILS=`grep "^${MOD}	" ${FORBIDDEN_MODS_DETAILS}`
+			MOD_NAME=`echo "${MOD_DETAILS}" | cut -d"	" -f2`
+			SENTENCE=`echo "${MOD_DETAILS}" | cut -d"	" -f4`
+			AddToChat "${PLAYER} is using a forbidden mod: ${MOD_NAME}"
+			case ${SENTENCE} in
+				"tempban")	ExecuteCommand "tempban ${PLAYER} ${TEMPBAN_DURATION}" ;;
+				"ban")		ExecuteCommand "ban ${PLAYER} for cheating" ;;
+				"kick")		ExecuteCommand "kick ${PLAYER} for using a forbidden mod" ;;
+				*)		LogError "CronDetectCheaters - unknown sentence"
+			esac
+		done
+	fi
+done
