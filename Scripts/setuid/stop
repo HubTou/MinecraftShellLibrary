@@ -1,0 +1,18 @@
+#!/bin/sh
+
+export DEFAULT_TIMEOUT 1
+
+. .server-settings
+
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Stopping server for maintenance in ${DEFAULT_TIMEOUT} minute(s)!"`printf \\\r`
+if [ $# = "1" ]
+then	screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Server will be back online in about ${1} minute(s)"`printf \\\r`
+fi
+SECONDS_TO_WAIT=`expr ${DEFAULT_TIMEOUT} \* 60 - 10`
+sleep ${SECONDS_TO_WAIT}
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Stopping server for maintenance in 10 seconds!!"`printf \\\r`
+sleep 10
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "say Stopping server for maintenance now!!!"`printf \\\r`
+sleep 1
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "save-all"`printf \\\r`
+screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "stop"`printf \\\r`
