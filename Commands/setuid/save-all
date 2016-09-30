@@ -1,6 +1,0 @@
-#!/bin/sh
-
-. .server-settings
-
-screen -S ${GNUSCREEN_SESSION} -p ${GNUSCREEN_WINDOW} -X stuff "save-all"`printf \\\r`
-
