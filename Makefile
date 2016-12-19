@@ -1,6 +1,6 @@
-# @(#) MinecraftShellLibrary:Makefile v1.10 (2016-09-30) / Hubert Tournier
+# @(#) MinecraftShellLibrary:Makefile (2016-09-30) / Hubert Tournier
 
-VERSION=1.10
+VERSION=1.11
 
 DEFAULTDESTDIR=/home/minecraft
 DEFAULTUSER=minecraft
