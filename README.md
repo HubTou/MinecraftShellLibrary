@@ -39,6 +39,11 @@ Developed and tested only on FreeBSD 10.1.
 
 Versions and changelog
 ======================
+1.11	2016-12-19
+
+			Corrected blocking syntax typo in the stop script
+			Added an XRay mod to the mod's ban list
+
 1.10	2016-09-30
 
 			Added a StripColors() function for filtering out color codes from logfiles
@@ -82,4 +87,4 @@ This open source software is distributed under a BSD license (see the "License" 
 Author
 ======
 Hubert Tournier
-September, 30 2016
+December, 19 2016
