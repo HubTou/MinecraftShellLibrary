@@ -1,5 +1,5 @@
 #!/bin/sh
-# @(#) .minecraft-library v1.10 (2016-09-30) / Hubert Tournier 
+# @(#) .minecraft-library (2016-09-30) / Hubert Tournier 
 
 # An API for Minecraft / Bukkit server management and scripting
 
