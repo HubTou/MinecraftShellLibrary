@@ -1,6 +1,6 @@
 #!/bin/sh
 
-export DEFAULT_TIMEOUT 1
+export DEFAULT_TIMEOUT=1
 
 . .server-settings
 
