@@ -1,3 +1,5 @@
+:warning: Due to [Microsoft inept policy concerning Minecraft accounts](https://help.minecraft.net/hc/en-us/articles/19615552270221) I no longer have access to the game and thus won't maintain this software anymore
+
 About Minecraft Shell Library
 =============================
 An API for Minecraft / Forge / Bukkit server management and scripting.
